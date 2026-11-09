@@ -1,14 +1,28 @@
-# Instagram 毎日自動投稿(日付の物語 + 格言 / 2枚カルーセル)
-
-## セットアップ
-1. Instagramを「プロアカウント」にし、Facebookページと連携
-2. Meta for Developers でアプリ作成 → 長期アクセストークン取得 → ページトークン(期限なし)を使う
-3. このフォルダを**公開**GitHubリポジトリに push(画像をraw URLで配信するため)
-4. Settings > Secrets に登録: `ANTHROPIC_API_KEY` / `IG_USER_ID` / `IG_ACCESS_TOKEN` / `AMAZON_TAG`(任意)
-5. Settings > Pages で `main` ブランチの `/docs` を公開 → そのURLをプロフィールのリンクに設定
-6. Actions タブから `daily-post` を手動実行してテスト(以後は毎朝7:00 JST)
-
-## 安全装置
-- 生成後にClaudeが事実確認し、NGなら3回まで作り直し→それでもNGならその日は投稿せず失敗通知
-- 格言は実在人物の引用ではなくオリジナル(偽の名言の拡散を防ぐ)
-- 過去の題材は history.json で重複回避
+name: daily-post
+on:
+  schedule:
+    - cron: "0 22 * * *"
+  workflow_dispatch: {}
+permissions: { contents: write }
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - run: pip install -r requirements.txt
+      - name: generate
+        run: python bot.py generate
+        env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}", AMAZON_TAG: "${{ secrets.AMAZON_TAG }}" }
+      - name: push
+        run: |
+          git config user.name github-actions
+          git config user.email actions@github.com
+          git add -A
+          git commit -m "post" || true
+          git push
+      - name: post
+        run: sleep 30 && python bot.py post
+        env: { IG_USER_ID: "${{ secrets.IG_USER_ID }}", IG_ACCESS_TOKEN: "${{ secrets.IG_ACCESS_TOKEN }}" }
